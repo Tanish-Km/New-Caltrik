@@ -1,0 +1,143 @@
+{
+  "theme": {
+    "primary_archetype": "Archetype 2: The Performance Pro (Elite Athleticism & Precision)",
+    "mode": "Both (Dark Mode Default with Light Toggle)",
+    "emotional_tone": "Tactical, focused, high-energy, premium, data-driven",
+    "design_philosophy": "Command-center focus. High-visibility 'Tactical Minimal' look. Sharp edges, 1px solid borders. No soft shadows. Data is king."
+  },
+  "colors": {
+    "dark": {
+      "background": "#0A0A0A",
+      "surface": "#141414",
+      "surface_hover": "#1F1F1F",
+      "primary_accent": "#CCFF00",
+      "primary_accent_hover": "#B3E600",
+      "secondary_accent": "#007AFF",
+      "danger": "#FF3B30",
+      "success": "#34C759",
+      "border": "rgba(255, 255, 255, 0.1)",
+      "text_primary": "#FFFFFF",
+      "text_secondary": "#A1A1AA",
+      "text_on_primary": "#0A0A0A"
+    },
+    "light": {
+      "background": "#F4F4F5",
+      "surface": "#FFFFFF",
+      "surface_hover": "#E4E4E7",
+      "primary_accent": "#CCFF00",
+      "primary_accent_hover": "#B3E600",
+      "secondary_accent": "#007AFF",
+      "danger": "#FF3B30",
+      "success": "#34C759",
+      "border": "rgba(0, 0, 0, 0.1)",
+      "text_primary": "#0A0A0A",
+      "text_secondary": "#52525B",
+      "text_on_primary": "#0A0A0A"
+    }
+  },
+  "typography": {
+    "headings": {
+      "font_family": "'Barlow Condensed', sans-serif",
+      "weights": ["700", "900"],
+      "usage": "H1-H3, metric numbers, and high-impact labels. Must use uppercase and tracking-tight."
+    },
+    "display": {
+      "font_family": "'Bebas Neue', sans-serif",
+      "weights": ["400"],
+      "usage": "Massive stats on the dashboard, hero headlines. Never use for body."
+    },
+    "body": {
+      "font_family": "'Manrope', sans-serif",
+      "weights": ["400", "500", "600", "700"],
+      "usage": "All paragraph text, inputs, datatables, and secondary labels."
+    },
+    "scale": {
+      "h1": "text-5xl md:text-6xl tracking-tighter uppercase",
+      "h2": "text-3xl md:text-4xl tracking-tight uppercase",
+      "h3": "text-xl md:text-2xl tracking-tight uppercase",
+      "metric": "text-4xl md:text-5xl font-['Bebas_Neue'] tracking-wide",
+      "body": "text-base leading-relaxed",
+      "small": "text-xs tracking-[0.1em] uppercase font-bold"
+    }
+  },
+  "layout_and_spacing": {
+    "grid_system": "The 'Control Room' Grid",
+    "structure": "grid-cols-1 md:grid-cols-4 lg:grid-cols-12 gap-4 or gap-6",
+    "spacing_scale": "Use tight gaps for dashboard widgets (gap-4). Generous padding inside cards (p-6) to avoid collision.",
+    "borders": "Grid Borders: Expose the skeleton. Use border-collapse patterns or 1px solid borders on cards. border-r border-b. Remove last item border if needed.",
+    "border_radius": "rounded-none or max rounded-sm. Absolutely no pill-shapes or large rounded corners. Keep it sharp and tactical.",
+    "shadows": "Replace soft shadows with 1px solid strokes or 2px 'Inner Glow' highlights (box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1))."
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-[#CCFF00] text-[#0A0A0A] hover:bg-[#B3E600] rounded-none font-bold uppercase tracking-wider transition-all active:scale-95",
+      "secondary": "bg-transparent border border-[#CCFF00] text-[#CCFF00] hover:bg-[#CCFF00]/10 rounded-none font-bold uppercase tracking-wider",
+      "ghost": "text-text_secondary hover:text-text_primary hover:bg-surface_hover rounded-none"
+    },
+    "cards": {
+      "style": "bg-surface border border-border rounded-none p-6",
+      "header": "Flex row, justify-between, uppercase overline label, border-b border-border pb-4 mb-4"
+    },
+    "inputs_and_forms": {
+      "style": "bg-background border border-border rounded-none focus:ring-1 focus:ring-[#CCFF00] focus:border-[#CCFF00] text-text_primary px-4 py-2",
+      "labels": "text-xs uppercase tracking-widest text-text_secondary mb-2 block font-['Barlow_Condensed']"
+    },
+    "charts": {
+      "library": "Recharts (via Shadcn)",
+      "style": "Tactical neon lines (Volt Yellow / Electric Blaze). High-contrast dots. NO area fills unless 10% opacity. Dotted grid lines at 10% opacity. Tooltips must be sharp-edged black boxes with 1px Volt Yellow border."
+    },
+    "navigation": {
+      "style": "Sticky top bar or sleek side rail. Glassmorphism ONLY if heavily blurred (backdrop-blur-2xl bg-[#0A0A0A]/80) with 1px bottom border. Otherwise solid surface color."
+    }
+  },
+  "motion_and_interaction": {
+    "hover_states": "Crisp color inversions or subtle border brightness increases. E.g., border-white/10 becomes border-[#CCFF00].",
+    "page_transitions": "Fast, mechanical ease-outs. No slow fades. Use framer-motion for staggering dashboard widgets on load (stagger children by 0.05s).",
+    "active_states": "Elements should physically depress (scale: 0.98) to feel tactile."
+  },
+  "media_and_assets": {
+    "rules": "Never use placeholders. Use provided URLs. Overlay hero images with bg-black/60 to ensure text readability.",
+    "images": {
+      "hero_background": {
+        "url": "https://static.prod-images.emergentagent.com/jobs/fe1df52b-6c01-40c5-89da-0f1b51b28d4f/images/d9541ce80f9f4b3a4a9b42f8de4b89bc774f665c8126e30c04e772d1c3160939.png",
+        "description": "Macro shot of dark obsidian metallic gym textures with volt yellow edge lighting. Use for main landing page hero or authentication page background."
+      },
+      "dashboard_data_bg": {
+        "url": "https://static.prod-images.emergentagent.com/jobs/fe1df52b-6c01-40c5-89da-0f1b51b28d4f/images/b24e3fffa5f5470fecfa9d1499e8beee54408ed8f0da075c7f2afc8c20285121.png",
+        "description": "3D topographic lines with neon highlight. Perfect for empty states or the background of the calorie macro calculator section."
+      },
+      "workout_feature_1": {
+        "url": "https://images.unsplash.com/photo-1766287453739-c3ffc3f37d05?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "description": "Man doing dip exercise. Use for workout integration section."
+      },
+      "workout_feature_2": {
+        "url": "https://images.pexels.com/photos/31849599/pexels-photo-31849599.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Muscular man doing lat pulldown. Use for progress tracking visual."
+      },
+      "meal_prep_feature": {
+        "url": "https://images.pexels.com/photos/1640775/pexels-photo-1640775.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Colorful healthy meal prep. Use for food logger / nutrition section."
+      },
+      "meal_prep_secondary": {
+        "url": "https://images.pexels.com/photos/30635719/pexels-photo-30635719.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Containers of prepared meals. Use for meal history."
+      }
+    },
+    "icons": {
+      "library": "lucide-react",
+      "style": "Use strokeWidth={1.5} for a sharp, technical look. Do not use filled icons."
+    }
+  },
+  "testing": {
+    "attributes": "ALL interactive elements MUST include data-testid. e.g. data-testid=\"calorie-log-button\", data-testid=\"theme-toggle\"."
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow the 'Tactical Minimalism' aesthetic. The UI should look like a command center for an athlete.",
+    "Do not use generic border radii. Stick to rounded-none or rounded-sm for a sharp edge.",
+    "For the theme toggle, use the provided dark and light color systems. Dark mode should be the default.",
+    "Use Shadcn UI components but strip away their default Vercel-like soft radii and borders. Make them flat and sharp.",
+    "Integrate the Bebas Neue and Barlow Condensed fonts for headings and Manrope for body text. Use Google Fonts via index.css.",
+    "Ensure all text layered over images has a strong backdrop (bg-black/60 or gradient) to maintain contrast.",
+    "Construct the dashboard using the 'Control Room' grid philosophy (dense, highly utilized space)."
+  ]
+}
