@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { api } from "../lib/api";
 import { toast } from "sonner";
-import { Search, Plus, Trash2, History, X } from "lucide-react";
+import { Search, Plus, Minus, Trash2, History, X } from "lucide-react";
 
 const CATEGORIES = ["breakfast", "lunch", "dinner", "snacks"];
 
@@ -23,6 +23,42 @@ export default function FoodLog() {
     await api.delete(`/meals/${id}`);
     toast.success("Meal removed");
     load();
+  };
+
+  const addServing = async (meal) => {
+    const current = meal.servings || 1;
+    const nextServings = current + 1;
+    setMeals((prev) =>
+      prev.map((m) => (m.id === meal.id ? { ...m, servings: nextServings } : m))
+    );
+    try {
+      await api.patch(`/meals/${meal.id}`, { servings: nextServings });
+      toast.success(`Added 1 serving of ${meal.name} (${nextServings}× total)`);
+      load();
+    } catch {
+      toast.error("Failed to update serving");
+      load();
+    }
+  };
+
+  const removeServing = async (meal) => {
+    const current = meal.servings || 1;
+    if (current <= 1) {
+      del(meal.id);
+      return;
+    }
+    const nextServings = current - 1;
+    setMeals((prev) =>
+      prev.map((m) => (m.id === meal.id ? { ...m, servings: nextServings } : m))
+    );
+    try {
+      await api.patch(`/meals/${meal.id}`, { servings: nextServings });
+      toast.success(`Removed 1 serving of ${meal.name} (${nextServings}× total)`);
+      load();
+    } catch {
+      toast.error("Failed to update serving");
+      load();
+    }
   };
 
   const totals = meals.reduce((acc, m) => ({
@@ -91,9 +127,34 @@ export default function FoodLog() {
                       </div>
                     </div>
                     <div className="font-display text-2xl">{Math.round(m.calories * m.servings)}</div>
-                    <button onClick={() => del(m.id)} data-testid={`delete-meal-${m.id}`} className="text-muted-foreground hover:text-destructive">
-                      <Trash2 className="w-4 h-4"/>
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {m.servings > 1 && (
+                        <button
+                          onClick={() => removeServing(m)}
+                          data-testid={`remove-serving-${m.id}`}
+                          title="Decrease serving"
+                          className="text-muted-foreground hover:text-[#CCFF00] p-1 transition-colors"
+                        >
+                          <Minus className="w-4 h-4"/>
+                        </button>
+                      )}
+                      <button
+                        onClick={() => addServing(m)}
+                        data-testid={`add-serving-${m.id}`}
+                        title="Add another serving"
+                        className="text-muted-foreground hover:text-[#CCFF00] p-1 transition-colors"
+                      >
+                        <Plus className="w-4 h-4"/>
+                      </button>
+                      <button
+                        onClick={() => del(m.id)}
+                        data-testid={`delete-meal-${m.id}`}
+                        title="Remove food"
+                        className="text-muted-foreground hover:text-destructive p-1 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4"/>
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>

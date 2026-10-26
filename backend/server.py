@@ -180,6 +180,16 @@ class MealIn(BaseModel):
     servings: float = 1
     date: Optional[str] = None  # YYYY-MM-DD
 
+class MealUpdate(BaseModel):
+    servings: Optional[float] = None
+    name: Optional[str] = None
+    category: Optional[Literal["breakfast", "lunch", "dinner", "snacks"]] = None
+    calories: Optional[float] = None
+    protein: Optional[float] = None
+    carbs: Optional[float] = None
+    fats: Optional[float] = None
+    serving: Optional[str] = None
+
 class WaterIn(BaseModel):
     glasses: int
     date: Optional[str] = None
@@ -341,6 +351,26 @@ async def get_meals(date: Optional[str] = None, user: dict = Depends(get_current
 async def delete_meal(meal_id: str, user: dict = Depends(get_current_user)):
     await db.meals.delete_one({"id": meal_id, "user_id": user["id"]})
     return {"ok": True}
+
+@api.patch("/meals/{meal_id}")
+@api.patch("/meals/{meal_id}/", include_in_schema=False)
+@api.put("/meals/{meal_id}")
+@api.put("/meals/{meal_id}/", include_in_schema=False)
+async def update_meal(meal_id: str, body: MealUpdate, user: dict = Depends(get_current_user)):
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    if "servings" in updates and updates["servings"] <= 0:
+        await db.meals.delete_one({"id": meal_id, "user_id": user["id"]})
+        return {"ok": True, "deleted": True}
+    res = await db.meals.update_one(
+        {"id": meal_id, "user_id": user["id"]},
+        {"$set": updates}
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Meal not found")
+    updated = await db.meals.find_one({"id": meal_id, "user_id": user["id"]}, {"_id": 0})
+    return updated
 
 @api.get("/meals/history")
 async def meal_history(limit: int = 50, user: dict = Depends(get_current_user)):
