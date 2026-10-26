@@ -20,7 +20,7 @@ from foods_data import FOODS
 
 # ---------- Setup ----------
 mongo_url = os.environ.get('MONGO_URL', 'mongodb://127.0.0.1:27017')
-client = AsyncIOMotorClient(mongo_url)
+client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
 db_name = os.environ.get('DB_NAME', 'caltrik')
 db = client[db_name]
 
@@ -29,8 +29,8 @@ JWT_ALGORITHM = "HS256"
 def get_jwt_secret() -> str:
     return os.environ.get("JWT_SECRET", "caltrik_super_secure_jwt_secret_key_2026")
 
-app = FastAPI(title="Calorie Tracker API")
-api = APIRouter(prefix="/api")
+app = FastAPI(title="Calorie Tracker API", redirect_slashes=False)
+api = APIRouter()
 
 # ---------- Auth Helpers ----------
 def hash_password(pw: str) -> str:
@@ -225,22 +225,29 @@ def new_id() -> str:
 
 # ---------- Auth routes ----------
 @api.post("/auth/register")
+@api.post("/auth/register/", include_in_schema=False)
 async def register(body: RegisterIn, response: Response, request: Request):
     email = body.email.lower().strip()
-    if await db.users.find_one({"email": email}):
-        raise HTTPException(status_code=400, detail="Email already registered")
-    uid = new_id()
-    user_doc = {
-        "id": uid,
-        "email": email,
-        "name": body.name.strip(),
-        "password_hash": hash_password(body.password),
-        "role": "user",
-        "age": None, "gender": None, "height_cm": None, "weight_kg": None,
-        "activity_level": "moderate", "goal": "maintenance",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    await db.users.insert_one(user_doc)
+    try:
+        if await db.users.find_one({"email": email}):
+            raise HTTPException(status_code=400, detail="Email already registered")
+        uid = new_id()
+        user_doc = {
+            "id": uid,
+            "email": email,
+            "name": body.name.strip(),
+            "password_hash": hash_password(body.password),
+            "role": "user",
+            "age": None, "gender": None, "height_cm": None, "weight_kg": None,
+            "activity_level": "moderate", "goal": "maintenance",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.users.insert_one(user_doc)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Database error during register: {e}")
+        raise HTTPException(status_code=503, detail="Database connection unavailable. Please ensure MONGO_URL is configured in your environment variables.")
     token = create_access_token(uid, email)
     set_auth_cookie(response, token, request)
     user_doc.pop("password_hash", None)
@@ -248,9 +255,14 @@ async def register(body: RegisterIn, response: Response, request: Request):
     return {"user": user_doc, "token": token}
 
 @api.post("/auth/login")
+@api.post("/auth/login/", include_in_schema=False)
 async def login(body: LoginIn, response: Response, request: Request):
     email = body.email.lower().strip()
-    user = await db.users.find_one({"email": email})
+    try:
+        user = await db.users.find_one({"email": email})
+    except Exception as e:
+        logger.error(f"Database error during login: {e}")
+        raise HTTPException(status_code=503, detail="Database connection unavailable. Please ensure MONGO_URL is configured in your environment variables.")
     if not user or not verify_password(body.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     token = create_access_token(user["id"], email)
@@ -260,12 +272,14 @@ async def login(body: LoginIn, response: Response, request: Request):
     return {"user": user, "token": token}
 
 @api.post("/auth/logout")
+@api.post("/auth/logout/", include_in_schema=False)
 async def logout(response: Response, request: Request):
     is_secure = request.url.is_secure or request.headers.get("x-forwarded-proto", "").lower() == "https"
     response.delete_cookie("access_token", path="/", samesite="none" if is_secure else "lax", secure=is_secure)
     return {"ok": True}
 
 @api.get("/auth/me")
+@api.get("/auth/me/", include_in_schema=False)
 async def me(user: dict = Depends(get_current_user)):
     targets = calculate_bmr_tdee_macros(user)
     return {"user": user, "targets": targets}
@@ -468,6 +482,7 @@ async def root():
     return {"message": "Calorie Tracker API", "status": "running"}
 
 @api.get("/health")
+@api.get("/health/", include_in_schema=False)
 async def health():
     db_status = "connected"
     try:
@@ -476,6 +491,13 @@ async def health():
         db_status = f"error: {str(e)}"
     return {"status": "ok", "database": db_status}
 
+# Global OPTIONS handler so preflight or direct OPTIONS requests never return 405 Method Not Allowed
+@app.options("/{full_path:path}")
+async def options_handler(full_path: str):
+    return Response(status_code=200)
+
+# Dual-mount the router so both /api/... and /... resolve seamlessly across local dev and Vercel rewrites
+app.include_router(api, prefix="/api")
 app.include_router(api)
 
 # Configure CORS for local development and Vercel deployments
@@ -493,7 +515,7 @@ allowed_origins = list(set(default_origins + custom_origins))
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$|^https://.*\.vercel\.app$|^https://.*\.now\.sh$",
+    allow_origin_regex=r"^https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

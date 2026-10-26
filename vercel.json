@@ -1,38 +1,24 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "api/index.py",
-      "use": "@vercel/python"
-    },
-    {
-      "src": "frontend/package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "build"
-      }
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "cd frontend && (yarn install && yarn build || npm install --legacy-peer-deps && npm run build)",
+  "outputDirectory": "frontend/build",
+  "functions": {
+    "api/index.py": {
+      "includeFiles": "backend/**"
     }
-  ],
-  "routes": [
+  },
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/index.py"
+      "source": "/api/(.*)",
+      "destination": "/api/index.py"
     },
     {
-      "src": "^/static/(.*)",
-      "dest": "/frontend/static/$1"
+      "source": "/api",
+      "destination": "/api/index.py"
     },
     {
-      "src": "^/favicon.ico",
-      "dest": "/frontend/favicon.ico"
-    },
-    {
-      "src": "^/manifest.json",
-      "dest": "/frontend/manifest.json"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/frontend/index.html"
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
     }
   ]
 }
