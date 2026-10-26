@@ -19,14 +19,15 @@ from pydantic import BaseModel, EmailStr, Field
 from foods_data import FOODS
 
 # ---------- Setup ----------
-mongo_url = os.environ['MONGO_URL']
+mongo_url = os.environ.get('MONGO_URL', 'mongodb://127.0.0.1:27017')
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+db_name = os.environ.get('DB_NAME', 'caltrik')
+db = client[db_name]
 
 JWT_ALGORITHM = "HS256"
 
 def get_jwt_secret() -> str:
-    return os.environ["JWT_SECRET"]
+    return os.environ.get("JWT_SECRET", "caltrik_super_secure_jwt_secret_key_2026")
 
 app = FastAPI(title="Calorie Tracker API")
 api = APIRouter(prefix="/api")
@@ -42,30 +43,60 @@ def create_access_token(user_id: str, email: str) -> str:
     payload = {"sub": user_id, "email": email, "exp": datetime.now(timezone.utc) + timedelta(days=7), "type": "access"}
     return jwt.encode(payload, get_jwt_secret(), algorithm=JWT_ALGORITHM)
 
-def set_auth_cookie(response: Response, token: str):
+def set_auth_cookie(response: Response, token: str, request: Optional[Request] = None):
+    is_secure = False
+    if request:
+        proto = request.headers.get("x-forwarded-proto", "")
+        is_secure = request.url.is_secure or proto.lower() == "https"
+    elif os.environ.get("ENVIRONMENT", "").lower() in ("production", "prod"):
+        is_secure = True
+
     response.set_cookie(
-        key="access_token", value=token, httponly=True,
-        secure=True, samesite="none", max_age=604800, path="/"
+        key="access_token",
+        value=token,
+        httponly=True,
+        secure=is_secure,
+        samesite="none" if is_secure else "lax",
+        max_age=604800,
+        path="/"
     )
 
 async def get_current_user(request: Request) -> dict:
-    token = request.cookies.get("access_token")
-    if not token:
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            token = auth_header[7:]
-    if not token:
+    tokens_to_try = []
+    
+    # 1. Bearer token in Authorization header (primary for SPAs & cross-domain Vercel deployments)
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        bearer_token = auth_header[7:].strip()
+        if bearer_token:
+            tokens_to_try.append(bearer_token)
+            
+    # 2. Cookie access_token
+    cookie_token = request.cookies.get("access_token")
+    if cookie_token and cookie_token not in tokens_to_try:
+        tokens_to_try.append(cookie_token)
+        
+    if not tokens_to_try:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    try:
-        payload = jwt.decode(token, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
-        user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
-        if not user:
-            raise HTTPException(status_code=401, detail="User not found")
-        return user
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+
+    secret = get_jwt_secret()
+    last_error = "Invalid token"
+
+    for tok in tokens_to_try:
+        try:
+            payload = jwt.decode(tok, secret, algorithms=[JWT_ALGORITHM])
+            user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
+            if user:
+                return user
+            last_error = "User not found"
+        except jwt.ExpiredSignatureError:
+            last_error = "Token expired"
+        except jwt.InvalidTokenError:
+            last_error = "Invalid token"
+        except Exception as e:
+            last_error = str(e)
+
+    raise HTTPException(status_code=401, detail=last_error)
 
 # ---------- Calorie / Macro calculator ----------
 ACTIVITY_MULT = {
@@ -179,15 +210,22 @@ class CustomFoodIn(BaseModel):
     fats: float = 0
 
 # ---------- helpers ----------
-def today_str() -> str:
+def normalize_date(d: Optional[str] = None) -> str:
+    if d and isinstance(d, str):
+        cleaned = d.strip()[:10]
+        if len(cleaned) == 10 and cleaned[4] == '-' and cleaned[7] == '-':
+            return cleaned
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+def today_str() -> str:
+    return normalize_date()
 
 def new_id() -> str:
     return str(uuid.uuid4())
 
 # ---------- Auth routes ----------
 @api.post("/auth/register")
-async def register(body: RegisterIn, response: Response):
+async def register(body: RegisterIn, response: Response, request: Request):
     email = body.email.lower().strip()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -195,7 +233,7 @@ async def register(body: RegisterIn, response: Response):
     user_doc = {
         "id": uid,
         "email": email,
-        "name": body.name,
+        "name": body.name.strip(),
         "password_hash": hash_password(body.password),
         "role": "user",
         "age": None, "gender": None, "height_cm": None, "weight_kg": None,
@@ -204,26 +242,27 @@ async def register(body: RegisterIn, response: Response):
     }
     await db.users.insert_one(user_doc)
     token = create_access_token(uid, email)
-    set_auth_cookie(response, token)
+    set_auth_cookie(response, token, request)
     user_doc.pop("password_hash", None)
     user_doc.pop("_id", None)
     return {"user": user_doc, "token": token}
 
 @api.post("/auth/login")
-async def login(body: LoginIn, response: Response):
+async def login(body: LoginIn, response: Response, request: Request):
     email = body.email.lower().strip()
     user = await db.users.find_one({"email": email})
     if not user or not verify_password(body.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     token = create_access_token(user["id"], email)
-    set_auth_cookie(response, token)
+    set_auth_cookie(response, token, request)
     user.pop("password_hash", None)
     user.pop("_id", None)
     return {"user": user, "token": token}
 
 @api.post("/auth/logout")
-async def logout(response: Response):
-    response.delete_cookie("access_token", path="/")
+async def logout(response: Response, request: Request):
+    is_secure = request.url.is_secure or request.headers.get("x-forwarded-proto", "").lower() == "https"
+    response.delete_cookie("access_token", path="/", samesite="none" if is_secure else "lax", secure=is_secure)
     return {"ok": True}
 
 @api.get("/auth/me")
@@ -267,7 +306,7 @@ async def delete_custom_food(food_id: str, user: dict = Depends(get_current_user
 # ---------- Meals ----------
 @api.post("/meals")
 async def log_meal(body: MealIn, user: dict = Depends(get_current_user)):
-    d = body.date or today_str()
+    d = normalize_date(body.date)
     doc = {
         "id": new_id(), "user_id": user["id"], "date": d,
         **body.model_dump(exclude={"date"}),
@@ -279,7 +318,7 @@ async def log_meal(body: MealIn, user: dict = Depends(get_current_user)):
 
 @api.get("/meals")
 async def get_meals(date: Optional[str] = None, user: dict = Depends(get_current_user)):
-    d = date or today_str()
+    d = normalize_date(date)
     meals = await db.meals.find({"user_id": user["id"], "date": d}, {"_id": 0}).to_list(500)
     meals.sort(key=lambda m: m.get("created_at", ""))
     return {"date": d, "meals": meals}
@@ -297,30 +336,31 @@ async def meal_history(limit: int = 50, user: dict = Depends(get_current_user)):
 # ---------- Water ----------
 @api.post("/water")
 async def log_water(body: WaterIn, user: dict = Depends(get_current_user)):
-    d = body.date or today_str()
+    d = normalize_date(body.date)
+    glasses = max(0, body.glasses)
     await db.water.update_one(
         {"user_id": user["id"], "date": d},
-        {"$set": {"glasses": body.glasses, "user_id": user["id"], "date": d}},
+        {"$set": {"glasses": glasses, "user_id": user["id"], "date": d}},
         upsert=True,
     )
-    return {"date": d, "glasses": body.glasses}
+    return {"date": d, "glasses": glasses}
 
 @api.get("/water")
 async def get_water(date: Optional[str] = None, user: dict = Depends(get_current_user)):
-    d = date or today_str()
+    d = normalize_date(date)
     rec = await db.water.find_one({"user_id": user["id"], "date": d}, {"_id": 0})
     return {"date": d, "glasses": (rec or {}).get("glasses", 0)}
 
 # ---------- Progress ----------
 @api.post("/progress")
 async def log_progress(body: ProgressIn, user: dict = Depends(get_current_user)):
-    d = body.date or today_str()
+    d = normalize_date(body.date)
     doc = {"id": new_id(), "user_id": user["id"], "date": d,
            **{k: v for k, v in body.model_dump(exclude={"date"}).items() if v is not None},
            "created_at": datetime.now(timezone.utc).isoformat()}
     await db.progress.insert_one(doc)
     # sync latest weight to profile
-    if body.weight_kg:
+    if body.weight_kg is not None and body.weight_kg > 0:
         await db.users.update_one({"id": user["id"]}, {"$set": {"weight_kg": body.weight_kg}})
     doc.pop("_id", None)
     return doc
@@ -338,7 +378,7 @@ async def delete_progress(entry_id: str, user: dict = Depends(get_current_user))
 # ---------- Workouts ----------
 @api.post("/workouts")
 async def log_workout(body: WorkoutIn, user: dict = Depends(get_current_user)):
-    d = body.date or today_str()
+    d = normalize_date(body.date)
     # estimate calories burned if not provided (rough: 0.1 kcal/kg/rep + 5 kcal/min)
     cal = body.calories_burned or 0
     if not cal:
@@ -358,7 +398,7 @@ async def log_workout(body: WorkoutIn, user: dict = Depends(get_current_user)):
 async def get_workouts(date: Optional[str] = None, user: dict = Depends(get_current_user)):
     q = {"user_id": user["id"]}
     if date:
-        q["date"] = date
+        q["date"] = normalize_date(date)
     recs = await db.workouts.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
     return {"workouts": recs}
 
@@ -370,7 +410,7 @@ async def delete_workout(wid: str, user: dict = Depends(get_current_user)):
 # ---------- Dashboard ----------
 @api.get("/dashboard")
 async def dashboard(date: Optional[str] = None, user: dict = Depends(get_current_user)):
-    d = date or today_str()
+    d = normalize_date(date)
     meals = await db.meals.find({"user_id": user["id"], "date": d}, {"_id": 0}).to_list(500)
     workouts = await db.workouts.find({"user_id": user["id"], "date": d}, {"_id": 0}).to_list(500)
     water = await db.water.find_one({"user_id": user["id"], "date": d}, {"_id": 0})
@@ -422,19 +462,42 @@ async def dashboard(date: Optional[str] = None, user: dict = Depends(get_current
         "suggestion": suggestion,
     }
 
-# ---------- Health ----------
+# ---------- Health & Diagnostics ----------
 @api.get("/")
 async def root():
-    return {"message": "Calorie Tracker API"}
+    return {"message": "Calorie Tracker API", "status": "running"}
+
+@api.get("/health")
+async def health():
+    db_status = "connected"
+    try:
+        await client.admin.command("ping")
+    except Exception as e:
+        db_status = f"error: {str(e)}"
+    return {"status": "ok", "database": db_status}
 
 app.include_router(api)
 
+# Configure CORS for local development and Vercel deployments
+cors_origins_env = os.environ.get("CORS_ORIGINS", "")
+custom_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()]
+
+default_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8001",
+    "http://127.0.0.1:8001",
+]
+allowed_origins = list(set(default_origins + custom_origins))
+
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$|^https://.*\.vercel\.app$|^https://.*\.now\.sh$",
     allow_credentials=True,
-    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -442,23 +505,30 @@ logger = logging.getLogger(__name__)
 
 @app.on_event("startup")
 async def on_startup():
-    await db.users.create_index("email", unique=True)
-    await db.meals.create_index([("user_id", 1), ("date", 1)])
-    await db.workouts.create_index([("user_id", 1), ("date", 1)])
-    await db.progress.create_index([("user_id", 1), ("date", 1)])
-    # Seed admin
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@calorie.app").lower()
-    admin_pw = os.environ.get("ADMIN_PASSWORD", "Admin@123")
-    existing = await db.users.find_one({"email": admin_email})
-    if not existing:
-        await db.users.insert_one({
-            "id": new_id(), "email": admin_email, "name": "Admin",
-            "password_hash": hash_password(admin_pw), "role": "admin",
-            "age": 30, "gender": "male", "height_cm": 175, "weight_kg": 75,
-            "activity_level": "moderate", "goal": "maintenance",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        })
-        logger.info("Admin seeded.")
+    try:
+        await db.users.create_index("email", unique=True)
+        await db.meals.create_index([("user_id", 1), ("date", 1)])
+        await db.workouts.create_index([("user_id", 1), ("date", 1)])
+        await db.progress.create_index([("user_id", 1), ("date", 1)])
+    except Exception as e:
+        logger.warning(f"Index creation warning: {e}")
+
+    try:
+        # Seed admin
+        admin_email = os.environ.get("ADMIN_EMAIL", "admin@calorie.app").lower().strip()
+        admin_pw = os.environ.get("ADMIN_PASSWORD", "Admin@123")
+        existing = await db.users.find_one({"email": admin_email})
+        if not existing:
+            await db.users.insert_one({
+                "id": new_id(), "email": admin_email, "name": "Admin",
+                "password_hash": hash_password(admin_pw), "role": "admin",
+                "age": 30, "gender": "male", "height_cm": 175, "weight_kg": 75,
+                "activity_level": "moderate", "goal": "maintenance",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+            logger.info("Admin seeded.")
+    except Exception as e:
+        logger.warning(f"Admin seeding warning: {e}")
 
 @app.on_event("shutdown")
 async def shutdown():

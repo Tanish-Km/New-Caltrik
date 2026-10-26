@@ -103,7 +103,7 @@ export default function FoodLog() {
       </div>
 
       {showAdd && <AddFoodModal category={category} date={date} onClose={() => setShowAdd(false)} onAdded={load} />}
-      {showHistory && <HistoryModal onClose={() => setShowHistory(false)} onReuse={() => load()} />}
+      {showHistory && <HistoryModal date={date} onClose={() => setShowHistory(false)} onReuse={() => load()} />}
     </div>
   );
 }
@@ -199,15 +199,15 @@ function CustomFoodForm({ onCreated }) {
   );
 }
 
-function HistoryModal({ onClose, onReuse }) {
+function HistoryModal({ date, onClose, onReuse }) {
   const [items, setItems] = useState([]);
   useEffect(() => {
     api.get("/meals/history", { params: { limit: 50 } }).then(({ data }) => setItems(data.meals));
   }, []);
   const reuse = async (m) => {
     const { name, category, calories, protein, carbs, fats, serving, servings } = m;
-    await api.post("/meals", { name, category, calories, protein, carbs, fats, serving, servings });
-    toast.success(`${name} re-logged for today`);
+    await api.post("/meals", { name, category, calories, protein, carbs, fats, serving, servings, date });
+    toast.success(`${name} re-logged`);
     onReuse();
     onClose();
   };

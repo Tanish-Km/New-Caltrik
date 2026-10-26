@@ -6,26 +6,29 @@ import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { Link } from "react-router-dom";
 
 export default function Dashboard() {
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (targetDate) => {
     try {
-      const { data } = await api.get("/dashboard");
+      const d = targetDate || selectedDate;
+      const { data } = await api.get("/dashboard", { params: { date: d } });
       setData(data);
     } catch (e) {
       toast.error("Failed to load dashboard");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedDate]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(selectedDate); }, [load, selectedDate]);
 
   const updateWater = async (delta) => {
     const next = Math.max(0, (data?.water_glasses || 0) + delta);
-    await api.post("/water", { glasses: next });
-    setData((d) => ({ ...d, water_glasses: next }));
+    const d = data?.date || selectedDate;
+    await api.post("/water", { glasses: next, date: d });
+    setData((prev) => ({ ...prev, water_glasses: next }));
   };
 
   if (loading || !data) return <div className="p-8 text-center text-muted-foreground">Loading telemetry…</div>;
@@ -41,12 +44,23 @@ export default function Dashboard() {
 
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto">
-      <header className="mb-10 rise">
-        <div className="text-[10px] uppercase tracking-widest text-[#CCFF00] mb-2">/ Today · {data.date}</div>
-        <h1 className="font-display text-5xl md:text-6xl">Daily Command</h1>
-        <p className="text-sm text-muted-foreground mt-2">Live telemetry across nutrition, hydration and training.</p>
+      <header className="mb-10 rise flex items-end justify-between flex-wrap gap-4">
+        <div>
+          <div className="text-[10px] uppercase tracking-widest text-[#CCFF00] mb-2">/ Telemetry · {data.date}</div>
+          <h1 className="font-display text-5xl md:text-6xl">Daily Command</h1>
+          <p className="text-sm text-muted-foreground mt-2">Live telemetry across nutrition, hydration and training.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            data-testid="dashboard-date"
+            className="bg-background border border-border px-3 py-2 text-sm focus:outline-none focus:border-[#CCFF00]"
+          />
+        </div>
         {data.suggestion && (
-          <div data-testid="suggestion-banner" className="mt-6 border border-[#CCFF00] bg-[#CCFF00]/5 p-4 text-sm flex gap-3">
+          <div data-testid="suggestion-banner" className="w-full mt-2 border border-[#CCFF00] bg-[#CCFF00]/5 p-4 text-sm flex gap-3">
             <TrendingUp className="w-4 h-4 text-[#CCFF00] flex-shrink-0 mt-0.5" />
             <span>{data.suggestion}</span>
           </div>

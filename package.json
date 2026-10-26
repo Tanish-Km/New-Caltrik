@@ -1,0 +1,10 @@
+{
+  "name": "caltrik",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CalTrik - Performance OS for Athletes",
+  "scripts": {
+    "build": "cd frontend && yarn install && yarn build",
+    "start": "cd frontend && yarn start"
+  }
+}
